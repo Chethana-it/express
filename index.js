@@ -13,10 +13,17 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
 // initialize firebase admin
-const serviceAccount = require('./firebaseAdminConfig.json')
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-})
+let serviceAccount;
+if (process.env.FIREBASE_CONFIG) {
+    // Production - Environment variable eken
+    console.log('🔐 Using Firebase config from environment variable');
+    serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
+} else {
+    // Local development - JSON file eken
+    console.log('🔐 Using Firebase config from local file');
+    serviceAccount = require('./firebaseAdminConfig.json');
+}
+
 
 // SSE endpoint - Real-time updates walata
 app.get('/currency-stream', (req, res) => {
