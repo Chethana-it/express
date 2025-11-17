@@ -6,7 +6,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // CORS enable karanna - BEFORE other middleware
-app.use(cors())
+app.use(cors()) 
 
 // Body parser middleware add karanna - BEFORE routes
 app.use(express.json())
