@@ -3,7 +3,7 @@ const admin = require('firebase-admin')
 const cron = require('node-cron')
 const cors = require('cors')
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 8080;
 
 // CORS enable karanna - BEFORE other middleware
 app.use(cors()) 

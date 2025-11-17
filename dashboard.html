@@ -224,7 +224,7 @@
             
             try {
                 // Create new SSE connection
-                eventSource = new EventSource('http://localhost:3000/currency-stream');
+                eventSource = new EventSource('http://localhost:8080/currency-stream');
 
                 eventSource.onmessage = (event) => {
                     console.log('📡 RAW SSE DATA:', event.data);
@@ -290,7 +290,7 @@
             try {
                 document.getElementById('content').innerHTML = '<div class="loading">Loading currency data...</div>';
                 
-                const response = await fetch('http://localhost:3000/get-currencies');
+                const response = await fetch('http://localhost:8080/get-currencies');
                 const data = await response.json();
                 
                 console.log('📥 Manual fetch got:', data.length, 'records');
