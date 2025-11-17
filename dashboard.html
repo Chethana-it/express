@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Currency Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .currency-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .currency-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s;
+        }
+
+        .currency-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .currency-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .base-currency {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .timestamp {
+            font-size: 0.8em;
+            color: #999;
+        }
+
+        .rates {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .rate-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .currency-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .currency-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .alert {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        .loading {
+            text-align: center;
+            color: white;
+            font-size: 1.5em;
+            padding: 50px;
+        }
+
+        .refresh-btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            display: inline-block;
+            margin: 20px 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .connection-status {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin: 10px;
+            background: white;
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .connection-status.disconnected {
+            color: #dc3545;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: white;
+            padding: 50px;
+        }
+
+        .empty-state h2 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💱 Currency Dashboard</h1>
+            <p>Real-time LKR Exchange Rates</p>
+            <div>
+                <span id="status" class="connection-status">🔴 Connecting...</span>
+                <button class="refresh-btn" onclick="loadData()">🔄 Manual Refresh</button>
+            </div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div id="content" class="loading">Loading currency data...</div>
+    </div>
+
+    <script>
+        const THRESHOLD = 0.00320;
+        let eventSource = null;
+
+        function connectSSE() {
+            // Close existing connection
+            if (eventSource) {
+                console.log('Closing existing SSE connection...');
+                eventSource.close();
+            }
+
+            console.log('🔌 Connecting to SSE endpoint...');
+            
+            try {
+                // Create new SSE connection
+                eventSource = new EventSource('http://localhost:3000/currency-stream');
+
+                eventSource.onmessage = (event) => {
+                    console.log('📡 RAW SSE DATA:', event.data);
+                    
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('📡 PARSED DATA:', data);
+                        console.log('📊 Number of records:', data.length);
+                        
+                        // Update status
+                        document.getElementById('status').innerHTML = '🟢 Live';
+                        document.getElementById('status').className = 'connection-status';
+                        
+                        if (data.length === 0) {
+                            document.getElementById('content').innerHTML = `
+                                <div class="empty-state">
+                                    <h2>📭 No Data Available</h2>
+                                    <p>Start collecting currency data by triggering the fetch endpoint</p>
+                                </div>
+                            `;
+                            return;
+                        }
+
+                        console.log('🔄 Updating UI...');
+                        displayStats(data);
+                        displayCurrencies(data);
+                        console.log('✅ UI Updated!');
+                        
+                    } catch (parseError) {
+                        console.error('❌ JSON Parse Error:', parseError);
+                        console.error('Raw data was:', event.data);
+                    }
+                };
+
+                eventSource.onerror = (error) => {
+                    console.error('❌ SSE Connection error:', error);
+                    console.error('ReadyState:', eventSource.readyState);
+                    document.getElementById('status').innerHTML = '🔴 Disconnected';
+                    document.getElementById('status').className = 'connection-status disconnected';
+                    eventSource.close();
+                    
+                    // Retry after 5 seconds
+                    setTimeout(() => {
+                        console.log('🔄 Reconnecting...');
+                        document.getElementById('status').innerHTML = '🟡 Reconnecting...';
+                        connectSSE();
+                    }, 5000);
+                };
+
+                eventSource.onopen = () => {
+                    console.log('✅ SSE Connection established');
+                    document.getElementById('status').innerHTML = '🟢 Live';
+                    document.getElementById('status').className = 'connection-status';
+                };
+                
+            } catch (error) {
+                console.error('❌ Failed to create SSE connection:', error);
+            }
+        }
+
+        async function loadData() {
+            console.log('🔄 Manual refresh triggered');
+            try {
+                document.getElementById('content').innerHTML = '<div class="loading">Loading currency data...</div>';
+                
+                const response = await fetch('http://localhost:3000/get-currencies');
+                const data = await response.json();
+                
+                console.log('📥 Manual fetch got:', data.length, 'records');
+
+                if (data.length === 0) {
+                    document.getElementById('content').innerHTML = `
+                        <div class="empty-state">
+                            <h2>📭 No Data Available</h2>
+                            <p>Start collecting currency data by triggering the fetch endpoint</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                displayStats(data);
+                displayCurrencies(data);
+            } catch (error) {
+                console.error('❌ Manual fetch error:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="empty-state">
+                        <h2>❌ Error Loading Data</h2>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function displayStats(data) {
+            const latest = data[0];
+            const statsHtml = `
+                <div class="stat-card">
+                    <h3>Total Records</h3>
+                    <div class="value">${data.length}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Latest USD Rate</h3>
+                    <div class="value">${latest.result.USD}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Latest GBP Rate</h3>
+                    <div class="value">${latest.result.GBP}</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Latest EUR Rate</h3>
+                    <div class="value">${latest.result.EUR}</div>
+                </div>
+            `;
+            document.getElementById('stats').innerHTML = statsHtml;
+        }
+
+        function displayCurrencies(data) {
+            const html = data.map(item => {
+                const fetchTime = new Date(item.fetchedAt).toLocaleString();
+                const isAboveThreshold = item.result.USD > THRESHOLD;
+                
+                return `
+                    <div class="currency-card">
+                        <div class="currency-header">
+                            <div class="base-currency">${item.base}</div>
+                            <div class="timestamp">📅 ${fetchTime}</div>
+                        </div>
+                        <div class="rates">
+                            <div class="rate-item">
+                                <span class="currency-name">🇺🇸 USD</span>
+                                <span class="currency-value">${item.result.USD}</span>
+                            </div>
+                            <div class="rate-item">
+                                <span class="currency-name">🇬🇧 GBP</span>
+                                <span class="currency-value">${item.result.GBP}</span>
+                            </div>
+                            <div class="rate-item">
+                                <span class="currency-name">🇪🇺 EUR</span>
+                                <span class="currency-value">${item.result.EUR}</span>
+                            </div>
+                        </div>
+                        ${isAboveThreshold ? `
+                            <div class="alert">
+                                🚨 USD rate exceeded threshold (${THRESHOLD})
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('content').innerHTML = `<div class="currency-grid">${html}</div>`;
+        }
+
+        // Connect SSE on page load
+        console.log('🚀 Page loaded, connecting SSE...');
+        connectSSE();
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            console.log('👋 Page unloading, closing SSE...');
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+    </script>
+</body>
+</html>
