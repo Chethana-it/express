@@ -3,7 +3,7 @@ const admin = require('firebase-admin')
 const cron = require('node-cron')
 const cors = require('cors')
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // CORS enable karanna - BEFORE other middleware
 app.use(cors())
@@ -12,28 +12,43 @@ app.use(cors())
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
-
 // Serve static files from root directory
 app.use(express.static(__dirname))
 
-// initialize firebase admin
-let serviceAccount;
+// initialize firebase admin - SYNCHRONOUSLY
+let firebaseInitialized = false;
 
-if (process.env.FIREBASE_CONFIG) {
-    // Production - Environment variable eken
-    console.log('🔐 Using Firebase config from environment variable');
-    serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
-} else {
-    // Local development - JSON file eken
-    console.log('🔐 Using Firebase config from local file');
-    serviceAccount = require('./firebaseAdminConfig.json');
-}
+(async () => {
+    let serviceAccount;
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-})
+    if (process.env.FIREBASE_CONFIG) {
+        // Production - Environment variable eken
+        console.log('🔐 Using Firebase config from environment variable');
+        try {
+            serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG);
+            console.log('✅ Firebase config parsed successfully');
+            console.log('📋 Project ID:', serviceAccount.project_id);
+        } catch (error) {
+            console.error('❌ Failed to parse FIREBASE_CONFIG:', error.message);
+            process.exit(1);
+        }
+    } else {
+        // Local development - JSON file eken
+        console.log('🔐 Using Firebase config from local file');
+        serviceAccount = require('./firebaseAdminConfig.json');
+    }
 
-console.log('✅ Firebase Admin initialized successfully');
+    try {
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log('✅ Firebase Admin initialized successfully');
+        firebaseInitialized = true;
+    } catch (error) {
+        console.error('❌ Firebase initialization failed:', error.message);
+        process.exit(1);
+    }
+})();
 
 // SSE endpoint - Real-time updates walata
 app.get('/currency-stream', (req, res) => {
@@ -209,11 +224,17 @@ app.post('/add-currencies-batch', async(req, res) => {
 
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
-})
+});
 
 // ======== SCHEDULER FUNCTION ========
 // FastForex API eken data fetch karala Firebase ekata save karana function
 async function fetchAndSaveCurrencies() {
+    // Check if Firebase is initialized
+    if (!firebaseInitialized) {
+        console.log('⏳ Waiting for Firebase to initialize...');
+        return;
+    }
+
     const db = admin.firestore();
     try {
         console.log('⏰ Scheduler started - Fetching currency data...');
@@ -261,6 +282,7 @@ async function fetchAndSaveCurrencies() {
 
     } catch(error) {
         console.error('❌ Scheduler error:', error.message);
+        // Don't crash the app, just log the error
     }
 }
 
@@ -306,37 +328,41 @@ async function sendNotification(currentValue, threshold) {
 
 // ======== CRON SCHEDULES ========
 
-// TESTING - Every 2 minutes (uncomment karala test karanna)
-cron.schedule('*/2 * * * *', () => {
-    console.log('🔄 Running scheduled task...');
-    fetchAndSaveCurrencies();
-});
+// Wait for Firebase to initialize before starting scheduler
+const startScheduler = () => {
+    const checkAndStart = setInterval(() => {
+        if (firebaseInitialized) {
+            clearInterval(checkAndStart);
+            
+            console.log('🕒 Starting scheduler...');
+            
+            // TESTING - Every 2 minutes (uncomment karala test karanna)
+            cron.schedule('*/2 * * * *', () => {
+                console.log('🔄 Running scheduled task...');
+                fetchAndSaveCurrencies();
+            });
 
-// PRODUCTION - Every hour at minute 0 (production walata meka use karanna)
-// cron.schedule('0 * * * *', () => {
-//     console.log('🔄 Running hourly scheduled task...');
-//     fetchAndSaveCurrencies();
-// });
+            // PRODUCTION - Every hour at minute 0 (production walata meka use karanna)
+            // cron.schedule('0 * * * *', () => {
+            //     console.log('🔄 Running hourly scheduled task...');
+            //     fetchAndSaveCurrencies();
+            // });
 
-// Every day at 9:00 AM
-// cron.schedule('0 9 * * *', () => {
-//     fetchAndSaveCurrencies();
-// });
+            console.log('✅ Scheduler initialized - Currency data will be fetched every 2 minutes (TEST MODE)');
+            console.log('💡 Tip: Use POST /trigger-fetch to manually trigger the fetch anytime!');
+        }
+    }, 1000); // Check every second
+};
 
-// Every day at 9 AM and 5 PM
-// cron.schedule('0 9,17 * * *', () => {
-//     fetchAndSaveCurrencies();
-// });
-
-// Every Monday at 10:00 AM
-// cron.schedule('0 10 * * 1', () => {
-//     fetchAndSaveCurrencies();
-// });
-
-console.log('🕒 Scheduler initialized - Currency data will be fetched every 2 minutes (TEST MODE)')
-console.log('💡 Tip: Use POST /trigger-fetch to manually trigger the fetch anytime!')
+// Start the scheduler
+startScheduler();
 
 // Serve dashboard at root route
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/dashboard.html');
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
 });
