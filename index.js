@@ -12,8 +12,13 @@ app.use(cors())
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
+
+// Serve static files from root directory
+app.use(express.static(__dirname))
+
 // initialize firebase admin
 let serviceAccount;
+
 if (process.env.FIREBASE_CONFIG) {
     // Production - Environment variable eken
     console.log('🔐 Using Firebase config from environment variable');
@@ -24,6 +29,11 @@ if (process.env.FIREBASE_CONFIG) {
     serviceAccount = require('./firebaseAdminConfig.json');
 }
 
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+})
+
+console.log('✅ Firebase Admin initialized successfully');
 
 // SSE endpoint - Real-time updates walata
 app.get('/currency-stream', (req, res) => {
@@ -161,11 +171,11 @@ app.post('/add-currency', async(req, res) => {
     }
 })
 
-// POST endpoint 
+// POST endpoint - wedi data tikak ekameta add karanna (batch)
 app.post('/add-currencies-batch', async(req, res) => {
     const db = admin.firestore();
     try {
-        const currencies = req.body; // expect array
+        const currencies = req.body; // Array ekak expect karanawa
         
         if (!Array.isArray(currencies) || currencies.length === 0) {
             return res.status(400).json({ error: 'Please provide an array of currency data' })
@@ -325,3 +335,8 @@ cron.schedule('*/2 * * * *', () => {
 
 console.log('🕒 Scheduler initialized - Currency data will be fetched every 2 minutes (TEST MODE)')
 console.log('💡 Tip: Use POST /trigger-fetch to manually trigger the fetch anytime!')
+
+// Serve dashboard at root route
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/dashboard.html');
+});
